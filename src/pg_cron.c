@@ -33,7 +33,7 @@
 
 #include "poll.h"
 #include "sys/time.h"
-#include "sys/poll.h"
+//#include "sys/poll.h"
 #include "time.h"
 
 #include "access/genam.h"
