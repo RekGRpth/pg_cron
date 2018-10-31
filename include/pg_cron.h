@@ -14,10 +14,10 @@
 
 /* global settings */
 extern char *CronTableDatabaseName;
-#if (PG_VERSION_NUM < 110000)
+//#if (PG_VERSION_NUM < 110000)
 #define PgAllocSetContextCreate AllocSetContextCreate
-#else
-#define PgAllocSetContextCreate AllocSetContextCreateExtended
-#endif
+//#else
+//#define PgAllocSetContextCreate AllocSetContextCreateExtended
+//#endif
 
 #endif
