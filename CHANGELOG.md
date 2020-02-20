@@ -1,3 +1,13 @@
+### pg_cron v1.2.0 (August 30, 2019) ###
+
+* PostgreSQL 12 support by dverite
+* Fixes a bug that caused the cron.job table to not appear in pg_dump
+
+### pg_cron v1.1.4 (April 4, 2019) ###
+
+* Adds a cron.host setting to make the postgres host configurable
+* Fixes a bug that could cause segmentation fault after cron.unschedule
+
 ### pg_cron v1.1.3 (November 15, 2018) ###
 
 * Fixes a bug that causes pg_cron to run during pg_upgrade

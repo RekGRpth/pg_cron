@@ -174,6 +174,15 @@ _PG_init(void)
 		GUC_SUPERUSER_ONLY,
 		NULL, NULL, NULL);
 
+	DefineCustomStringVariable(
+		"cron.host",
+		gettext_noop("Hostname to connect to postgres."),
+		NULL,
+		&CronHost,
+		"localhost",
+		PGC_POSTMASTER,
+		GUC_SUPERUSER_ONLY,
+		NULL, NULL, NULL);
 
 	/* set up common data for all our workers */
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
@@ -279,7 +288,7 @@ PgCronWorkerMain(Datum arg)
 	}
 
 
-	CronLoopContext = PgAllocSetContextCreate(CurrentMemoryContext,
+	CronLoopContext = AllocSetContextCreate(CurrentMemoryContext,
 											  "pg_cron loop context",
 											  ALLOCSET_DEFAULT_MINSIZE,
 											  ALLOCSET_DEFAULT_INITSIZE,
@@ -395,6 +404,16 @@ StartAllPendingRuns(List *taskList, TimestampTz currentTime)
 	{
 		CronTask *task = (CronTask *) lfirst(taskCell);
 
+		if (!task->isActive)
+		{
+			/*
+			 * The job has been unscheduled, so we should not schedule
+			 * new runs. The task will be safely removed on the next call
+			 * to ManageCronTask.
+			 */
+			continue;
+		}
+
 		StartPendingRuns(task, clockProgress, lastMinute, currentTime);
 	}
 
@@ -423,7 +442,6 @@ StartPendingRuns(CronTask *task, ClockProgress clockProgress,
 	entry *schedule = &cronJob->schedule;
 	TimestampTz virtualTime = lastMinute;
 	TimestampTz currentMinute = TimestampMinuteStart(currentTime);
-
 
 	switch (clockProgress)
 	{

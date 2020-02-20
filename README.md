@@ -93,6 +93,10 @@ After restarting PostgreSQL, you can create the pg_cron functions and metadata t
 -- run as superuser:
 CREATE EXTENSION pg_cron;
 
+-- on PostgreSQL 9.x, do this instead:
+CREATE EXTENSION pg_cron VERSION '1.0';
+ALTER EXTENSION pg_cron UPDATE;
+
 -- optionally, grant usage to regular users:
 GRANT USAGE ON SCHEMA cron TO marco;
 ```
@@ -105,10 +109,11 @@ For security, jobs are executed in the database in which the `cron.schedule` fun
 
 Articles showing possible ways of using pg_cron:
 
-* [Auto-partitioning using pg_partman](https://www.citusdata.com/blog/2017/12/27/real-time-analytics-dashboards-with-citus/)
+* [Auto-partitioning using pg_partman](https://www.citusdata.com/blog/2018/01/24/citus-and-pg-partman-creating-a-scalable-time-series-database-on-PostgreSQL/)
 * [Computing rollups in an analytical dashboard](https://www.citusdata.com/blog/2017/12/27/real-time-analytics-dashboards-with-citus/)
 * [Deleting old data, vacuum](https://www.citusdata.com/blog/2016/09/09/pgcron-run-periodic-jobs-in-postgres/)
 * [Feeding cats](http://bonesmoses.org/2016/09/09/pg-phriday-irrelevant-inclinations/)
+* [Routinely invoking a function](https://fluca1978.github.io/2019/05/21/pgcron.html)
 
 ## Advanced usage
 
@@ -127,8 +132,9 @@ The following table keeps track of which of the major managed Postgres services 
 
 | Service       | Supported     | Version  |
 | ------------- |:-------------:| --------:|
-| [Citus Cloud](https://www.citusdata.com/product/cloud)  | :heavy_check_mark: |   1.0    |
+| [Citus Cloud](https://www.citusdata.com/product/cloud)  | :heavy_check_mark: |   1.1.3    |
 | [Amazon RDS](https://aws.amazon.com/rds/postgresql/)     | :x:      |          |
-| [Azure](https://azure.microsoft.com/en-us/services/postgresql/) | :x:      |          |
+| [Azure](https://azure.microsoft.com/en-us/services/postgresql/) | :heavy_check_mark: for Hyperscale (Citus)   |  1.1.4 |
+| [DigitalOcean](https://www.digitalocean.com/products/managed-databases/) | :x: ([idea](https://ideas.digitalocean.com/ideas/DBAAS-I-18)) | |
 | [Google Cloud](https://cloud.google.com/sql/docs/postgres/) | :x:      |          |
 | [Heroku](https://elements.heroku.com/addons/heroku-postgresql) | :x: | |

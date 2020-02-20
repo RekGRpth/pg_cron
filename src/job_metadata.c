@@ -78,6 +78,7 @@ static MemoryContext CronJobContext = NULL;
 static HTAB *CronJobHash = NULL;
 static Oid CachedCronJobRelationId = InvalidOid;
 bool CronJobCacheValid = false;
+char *CronHost = "localhost";
 
 
 /*
@@ -90,7 +91,7 @@ InitializeJobMetadataCache(void)
 	/* watch for invalidation events */
 	CacheRegisterRelcacheCallback(InvalidateJobCacheCallback, (Datum) 0);
 
-	CronJobContext = PgAllocSetContextCreate(CurrentMemoryContext,
+	CronJobContext = AllocSetContextCreate(CurrentMemoryContext,
 											 "pg_cron job context",
 											 ALLOCSET_DEFAULT_MINSIZE,
 											 ALLOCSET_DEFAULT_INITSIZE,
@@ -199,7 +200,7 @@ cron_schedule(PG_FUNCTION_ARGS)
 	values[Anum_cron_job_jobid - 1] = jobIdDatum;
 	values[Anum_cron_job_schedule - 1] = CStringGetTextDatum(schedule);
 	values[Anum_cron_job_command - 1] = CStringGetTextDatum(command);
-	values[Anum_cron_job_nodename - 1] = CStringGetTextDatum("localhost");
+	values[Anum_cron_job_nodename - 1] = CStringGetTextDatum(CronHost);
 	values[Anum_cron_job_nodeport - 1] = Int32GetDatum(PostPortNumber);
 	values[Anum_cron_job_database - 1] = CStringGetTextDatum(CronTableDatabaseName);
 	values[Anum_cron_job_username - 1] = CStringGetTextDatum(userName);
