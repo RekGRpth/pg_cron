@@ -662,8 +662,8 @@ cron_unschedule(PG_FUNCTION_ARGS)
 Datum
 cron_unschedule_named(PG_FUNCTION_ARGS)
 {
-	Datum jobNameDatum = PG_GETARG_DATUM(0);
-	Name jobName = DatumGetName(jobNameDatum);
+	Datum jobNameDatum = 0;
+	char *jobName = NULL;
 
 	Oid userId = GetUserId();
 	char *userName = GetUserNameFromId(userId, false);
@@ -676,10 +676,18 @@ cron_unschedule_named(PG_FUNCTION_ARGS)
 	bool indexOK = false;
 	HeapTuple heapTuple = NULL;
 
+	if (PG_ARGISNULL(0))
+	{
+		ereport(ERROR, (errmsg("job_name can not be NULL")));
+	}
+
+	jobNameDatum = PG_GETARG_DATUM(0);
+	jobName = TextDatumGetCString(jobNameDatum);
+
 	cronJobsTable = table_open(CronJobRelationId(), RowExclusiveLock);
 
 	ScanKeyInit(&scanKey[0], Anum_cron_job_jobname,
-				BTEqualStrategyNumber, F_NAMEEQ, jobNameDatum);
+				BTEqualStrategyNumber, F_TEXTEQ, jobNameDatum);
 	ScanKeyInit(&scanKey[1], Anum_cron_job_username,
 				BTEqualStrategyNumber, F_TEXTEQ, userNameDatum);
 
@@ -690,7 +698,7 @@ cron_unschedule_named(PG_FUNCTION_ARGS)
 	if (!HeapTupleIsValid(heapTuple))
 	{
 		ereport(ERROR, (errmsg("could not find valid entry for job '%s'",
-							   NameStr(*jobName))));
+							   jobName)));
 	}
 
 	EnsureDeletePermission(cronJobsTable, heapTuple);
@@ -844,7 +852,6 @@ LoadCronJobList(void)
 		PopActiveSnapshot();
 		CommitTransactionCommand();
 		MemoryContextSwitchTo(originalContext);
-		pgstat_report_activity(STATE_IDLE, NULL);
 
 		return NIL;
 	}
@@ -897,7 +904,6 @@ LoadCronJobList(void)
 	PopActiveSnapshot();
 	CommitTransactionCommand();
 	MemoryContextSwitchTo(originalContext);
-	pgstat_report_activity(STATE_IDLE, NULL);
 
 	return jobList;
 }
@@ -961,7 +967,7 @@ TupleToCronJob(TupleDesc tupleDescriptor, HeapTuple heapTuple)
 									 tupleDescriptor, &isJobNameNull);
 		if (!isJobNameNull)
 		{
-			job->jobName = DatumGetName(jobName);
+			job->jobName = TextDatumGetCString(jobName);
 		}
 		else
 		{
@@ -1082,8 +1088,6 @@ InsertJobRunDetail(int64 runId, int64 *jobId, char *database, char *username, ch
 	argTypes[5] = TEXTOID;
 	argValues[5] = CStringGetTextDatum(status);
 
-	pgstat_report_activity(STATE_RUNNING, querybuf.data);
-
 	if(SPI_execute_with_args(querybuf.data,
 		argCount, argTypes, argValues, NULL, false, 1) != SPI_OK_INSERT)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
@@ -1094,7 +1098,6 @@ InsertJobRunDetail(int64 runId, int64 *jobId, char *database, char *username, ch
 	PopActiveSnapshot();
 	CommitTransactionCommand();
 	MemoryContextSwitchTo(originalContext);
-	pgstat_report_activity(STATE_IDLE, NULL);
 }
 
 void
@@ -1186,8 +1189,6 @@ UpdateJobRunDetail(int64 runId, int32 *job_pid, char *status, char *return_messa
 	/* and add the where clause */
 	appendStringInfo(&querybuf, " where runid = $%d", i);
 
-	pgstat_report_activity(STATE_RUNNING, querybuf.data);
-
 	if(SPI_execute_with_args(querybuf.data,
 		i, argTypes, argValues, NULL, false, 1) != SPI_OK_UPDATE)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
@@ -1198,7 +1199,6 @@ UpdateJobRunDetail(int64 runId, int32 *job_pid, char *status, char *return_messa
 	PopActiveSnapshot();
 	CommitTransactionCommand();
 	MemoryContextSwitchTo(originalContext);
-	pgstat_report_activity(STATE_IDLE, NULL);
 }
 
 
@@ -1396,8 +1396,6 @@ MarkPendingRunsAsFailed(void)
 		, CRON_SCHEMA_NAME, JOB_RUN_DETAILS_TABLE_NAME, GetCronStatus(CRON_STATUS_FAILED), GetCronStatus(CRON_STATUS_STARTING), GetCronStatus(CRON_STATUS_RUNNING));
 
 
-	pgstat_report_activity(STATE_RUNNING, querybuf.data);
-
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_UPDATE)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
 
@@ -1407,7 +1405,6 @@ MarkPendingRunsAsFailed(void)
 	PopActiveSnapshot();
 	CommitTransactionCommand();
 	MemoryContextSwitchTo(originalContext);
-	pgstat_report_activity(STATE_IDLE, NULL);
 }
 
 char *
