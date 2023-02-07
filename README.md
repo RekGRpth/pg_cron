@@ -4,7 +4,7 @@
 
 ## What is pg_cron?
 
-pg_cron is a simple cron-based job scheduler for PostgreSQL (10 or higher) that runs inside the database as an extension. It uses the same syntax as regular cron, but it allows you to schedule PostgreSQL commands directly from the database:
+pg_cron is a simple cron-based job scheduler for PostgreSQL (10 or higher) that runs inside the database as an extension. It uses the same syntax as regular cron, but it allows you to schedule PostgreSQL commands directly from the database. You can also use '[1-59] seconds' to schedule a job based on an interval.
 
 ```sql
 -- Delete old data on Saturday at 3:30am (GMT)
@@ -41,6 +41,9 @@ SELECT cron.schedule_in_database('weekly-vacuum', '0 4 * * 0', 'VACUUM', 'some_o
  schedule
 ----------
        44
+
+-- Call a stored procedure every 5 seconds
+SELECT cron.schedule('process-updates', '5 seconds', 'CALL process_updates()'); 
 ```
 
 pg_cron can run multiple jobs in parallel, but it runs at most one instance of a job at a time. If a second run is supposed to start before the first one finishes, then the second run is queued and started as soon as the first run completes.
@@ -107,8 +110,9 @@ By default, the pg_cron background worker expects its metadata tables to be crea
 # optionally, specify the database in which the pg_cron background worker should run (defaults to postgres)
 cron.database_name = 'postgres'
 ```
+`pg_cron` may only be installed to one database in a cluster. If you need to run jobs in multiple databases, use `cron.schedule_in_database()`.
 
-Previously we could only use GMT time, but now you can adapt your time by setting cron.timezone. You can configure this by setting the `cron.timezone` configuration parameter in postgresql.conf.
+Previously pg_cron could only use GMT time, but now you can adapt your time by setting `cron.timezone` in postgresql.conf.
 ```
 # add to postgresql.conf
 
@@ -118,8 +122,6 @@ cron.timezone = 'PRC'
 
 After restarting PostgreSQL, you can create the pg_cron functions and metadata tables using `CREATE EXTENSION pg_cron`.
 
-_Note: `pg_cron` may only be installed to one database in a cluster. If you need to run jobs in multiple databases, use `cron.schedule_in_database()`._
-
 ```sql
 -- run as superuser:
 CREATE EXTENSION pg_cron;
@@ -128,8 +130,16 @@ CREATE EXTENSION pg_cron;
 GRANT USAGE ON SCHEMA cron TO marco;
 ```
 
+### Ensuring pg_cron can start jobs
+
 **Important**: By default, pg_cron uses libpq to open a new connection to the local database, which needs to be allowed by [pg_hba.conf](https://www.postgresql.org/docs/current/static/auth-pg-hba-conf.html). 
 It may be necessary to enable `trust` authentication for connections coming from localhost in  for the user running the cron job, or you can add the password to a [.pgpass file](https://www.postgresql.org/docs/current/static/libpq-pgpass.html), which libpq will use when opening a connection. 
+
+You can also use a unix domain socket directory as the hostname and enable `trust` authentication for local connections in [pg_hba.conf](https://www.postgresql.org/docs/current/static/auth-pg-hba-conf.html), which is normally safe:
+```
+# Connect via a unix domain socket
+cron.host = '/tmp'
+```
 
 Alternatively, pg_cron can be configured to use background workers. In that case, the number of concurrent jobs is limited by the `max_worker_processes` setting, so you may need to raise that.
 
@@ -140,13 +150,36 @@ cron.use_background_workers = on
 max_worker_processes = 20
 ```
 
-You can also use a unix domain socket directory as the hostname and enable `trust` authentication for local connections in [pg_hba.conf](https://www.postgresql.org/docs/current/static/auth-pg-hba-conf.html), which is normally safe:
+For security, jobs are executed in the database in which the `cron.schedule` function is called with the same permissions as the current user. In addition, users are only able to see their own jobs in the `cron.job` table.
+
+## Viewing job run details
+
+You can view the status of running and recently completed job runs in the `cron.job_run_details`:
+
+```sql
+select * from cron.job_run_details order by start_time desc limit 5;
+┌───────┬───────┬─────────┬──────────┬──────────┬───────────────────┬───────────┬──────────────────┬───────────────────────────────┬───────────────────────────────┐
+│ jobid │ runid │ job_pid │ database │ username │      command      │  status   │  return_message  │          start_time           │           end_time            │
+├───────┼───────┼─────────┼──────────┼──────────┼───────────────────┼───────────┼──────────────────┼───────────────────────────────┼───────────────────────────────┤
+│    10 │  4328 │    2610 │ postgres │ marco    │ select process()  │ succeeded │ SELECT 1         │ 2023-02-07 09:30:00.098164+01 │ 2023-02-07 09:30:00.130729+01 │
+│    10 │  4327 │    2609 │ postgres │ marco    │ select process()  │ succeeded │ SELECT 1         │ 2023-02-07 09:29:00.015168+01 │ 2023-02-07 09:29:00.832308+01 │
+│    10 │  4321 │    2603 │ postgres │ marco    │ select process()  │ succeeded │ SELECT 1         │ 2023-02-07 09:28:00.011965+01 │ 2023-02-07 09:28:01.420901+01 │
+│    10 │  4320 │    2602 │ postgres │ marco    │ select process()  │ failed    │ server restarted │ 2023-02-07 09:27:00.011833+01 │ 2023-02-07 09:27:00.72121+01  │
+│     9 │  4320 │    2602 │ postgres │ marco    │ select do_stuff() │ failed    │ job canceled     │ 2023-02-07 09:26:00.011833+01 │ 2023-02-07 09:26:00.22121+01  │
+└───────┴───────┴─────────┴──────────┴──────────┴───────────────────┴───────────┴──────────────────┴───────────────────────────────┴───────────────────────────────┘
+(10 rows)
 ```
-# Connect via a unix domain socket
-cron.host = '/tmp'
+ 
+The records in `cron.job_run_details` are not cleaned automatically, but every user that can schedule cron jobs also has permission to delete their own `cron.job_run_details` records. 
+
+Especially when you have jobs that run every few seconds, it can be a good idea to clean up regularly, which can easily be done using pg_cron itself:
+
+```sql
+-- Delete old cron.job_run_details records of the current user every day at noon
+SELECT  cron.schedule('delete-job-run-details', '0 12 * * *', $$DELETE FROM cron.job_run_details WHERE end_time < now() - interval '7 days'$$);
 ```
 
-For security, jobs are executed in the database in which the `cron.schedule` function is called with the same permissions as the current user. In addition, users are only able to see their own jobs in the `cron.job` table.
+If you do not want to use `cron.job_run_details` at all, then you can add `cron.log_run = off` to `postgresql.conf`.
 
 ## Example use cases
 
@@ -176,3 +209,8 @@ The following table keeps track of which of the major managed Postgres services 
 | [ScaleGrid](https://scalegrid.io/postgresql.html) | :heavy_check_mark:  |
 | [Scaleway](https://www.scaleway.com/en/database/) | :heavy_check_mark:  |
 | [Supabase](https://supabase.io/docs/guides/database) | :heavy_check_mark:  |
+
+
+## Code of Conduct
+
+This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
