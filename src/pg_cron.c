@@ -268,6 +268,16 @@ _PG_init(void)
 		GUC_SUPERUSER_ONLY,
 		NULL, NULL, NULL);
 
+	DefineCustomBoolVariable(
+		"cron.launch_active_jobs",
+		gettext_noop("Launch jobs that are defined as active."),
+		NULL,
+		&LaunchActiveJobs,
+		true,
+		PGC_SIGHUP,
+		GUC_SUPERUSER_ONLY,
+		NULL, NULL, NULL);
+
 	if (!UseBackgroundWorkers)
 		DefineCustomIntVariable(
 			"cron.max_running_jobs",
@@ -623,11 +633,6 @@ PgCronLauncherMain(Datum arg)
 
 		AcceptInvalidationMessages();
 
-		if (!CronJobCacheValid)
-		{
-			RefreshTaskHash();
-		}
-
 		if (CronReloadConfig)
 		{
 			/* set the desired log_min_messages */
@@ -635,6 +640,16 @@ PgCronLauncherMain(Datum arg)
 			SetConfigOption("log_min_messages", cron_error_severity(CronLogMinMessages),
 												PGC_POSTMASTER, PGC_S_OVERRIDE);
 			CronReloadConfig = false;
+		}
+
+		/*
+		 * Both CronReloadConfig and CronJobCacheValid are triggered by SIGHUP.
+		 * ProcessConfigFile should come first, because RefreshTaskHash depends
+		 * on settings that might have changed.
+		 */
+		if (!CronJobCacheValid)
+		{
+			RefreshTaskHash();
 		}
 
 		taskList = CurrentTaskList();
