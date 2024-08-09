@@ -3,6 +3,13 @@ SELECT extversion FROM pg_extension WHERE extname='pg_cron';
 -- Test binary compatibility with v1.4 function signature.
 ALTER EXTENSION pg_cron UPDATE TO '1.4';
 SELECT cron.unschedule(job_name := 'no_such_job');
+SELECT cron.schedule('testjob', '* * * * *', 'SELECT 1');
+SELECT cron.unschedule('testjob');
+
+-- Test cache invalidation
+DROP EXTENSION pg_cron;
+CREATE EXTENSION pg_cron VERSION '1.4';
+
 ALTER EXTENSION pg_cron UPDATE;
 
 -- Vacuum every day at 10:00am (GMT)
