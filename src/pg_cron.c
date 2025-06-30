@@ -120,7 +120,7 @@ typedef enum
 /* forward declarations */
 void _PG_init(void);
 void _PG_fini(void);
-static void pg_cron_sigterm(SIGNAL_ARGS);
+static  void pg_cron_sigterm(SIGNAL_ARGS);
 static void pg_cron_sighup(SIGNAL_ARGS);
 PGDLLEXPORT void PgCronLauncherMain(Datum arg);
 PGDLLEXPORT void CronBackgroundWorker(Datum arg);
@@ -2074,7 +2074,7 @@ CronBackgroundWorker(Datum main_arg)
 												 ALLOCSET_DEFAULT_MAXSIZE);
 
 	/* Set up a dynamic shared memory segment. */
-	seg = dsm_attach(DatumGetInt32(main_arg));
+	seg = dsm_attach(DatumGetUInt32(main_arg));
 	if (seg == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
