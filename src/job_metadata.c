@@ -491,6 +491,12 @@ cron_schedule_named(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(0))
 		ereport(ERROR, (errmsg("job_name can not be NULL")));
+	/*
+	* v1.4 changed the first argument type from "name" to "text". Cope with
+	* calls from "CREATE EXTENSION pg_cron VERSION '1.3'".
+	*/
+	else if (get_fn_expr_argtype(fcinfo->flinfo, 0) == NAMEOID)
+		jobnameText = cstring_to_text(NameStr(*PG_GETARG_NAME(0)));
 	else
 		jobnameText = PG_GETARG_TEXT_P(0);
 
@@ -949,6 +955,7 @@ TupleToCronJob(TupleDesc tupleDescriptor, HeapTuple heapTuple)
 	Datum userName = heap_getattr(heapTuple, Anum_cron_job_username,
 								  tupleDescriptor, &isNull);
 
+	jobKey = DatumGetInt64(jobId);
 	jobOwner = TextDatumGetCString(userName);
 	jobOwnerId = get_role_oid(jobOwner, false);
 	if (!EnableSuperuserJobs && superuser_arg(jobOwnerId))
@@ -960,12 +967,10 @@ TupleToCronJob(TupleDesc tupleDescriptor, HeapTuple heapTuple)
 		 */
 		ereport(WARNING, (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						  errmsg("skipping job " INT64_FORMAT " since superuser jobs "
-								 "are currently disallowed",
-								 job->jobId)));
+								 "are currently disallowed", jobKey)));
 		return NULL;
 	}
 
-	jobKey = DatumGetInt64(jobId);
 	job = hash_search(CronJobHash, &jobKey, HASH_ENTER, &isPresent);
 
 	job->jobId = DatumGetInt64(jobId);
