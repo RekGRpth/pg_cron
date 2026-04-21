@@ -11,7 +11,19 @@
  *
  *-------------------------------------------------------------------------
  */
+
+/** move this first so windows gets the winsock early */ 
+#include "cron.h"
+
+#if defined(_WIN32) && (PG_VERSION_NUM < 160000)
+/* 
+* Skip sys/resource.h for PG15 and lower on Windows
+* this is only an issue with PG < 16 for windows cause of the changes in 16 and above for windows 
+*/
+#else
 #include <sys/resource.h>
+#endif
+
 
 #include "postgres.h"
 #include "fmgr.h"
@@ -30,7 +42,6 @@
 /* these headers are used by this particular worker's code */
 
 #define MAIN_PROGRAM
-#include "cron.h"
 
 #include "pg_cron.h"
 #include "task_states.h"
@@ -158,6 +169,7 @@ static void CleanupCronTask(CronTask *task);
 char *CronTableDatabaseName = "postgres";
 static bool CronLogStatement = true;
 static bool CronLogRun = true;
+static bool CronDomDowAndLogic = false;
 
 /* global variables */
 static int CronTaskStartTimeout = 10000; /* maximum connection time */
@@ -327,6 +339,16 @@ _PG_init(void)
 		PGC_POSTMASTER,
 		GUC_SUPERUSER_ONLY,
 		check_timezone, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"cron.match_dom_and_dow",
+		gettext_noop("Requires a day to match both the day-of-month and day-of-week fields."),
+		NULL,
+		&CronDomDowAndLogic,
+		false,
+		PGC_SIGHUP,
+		GUC_SUPERUSER_ONLY,
+		NULL, NULL, NULL);
 
 	/* set up common data for all our workers */
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
@@ -953,7 +975,7 @@ ShouldRunTask(entry *schedule, TimestampTz currentTime, bool doWild,
 	if (bit_test(schedule->minute, minute) &&
 		bit_test(schedule->hour, hour) &&
 		bit_test(schedule->month, month) &&
-		((schedule->flags & (DOM_STAR | DOW_STAR)) != 0
+		((CronDomDowAndLogic || (schedule->flags & (DOM_STAR | DOW_STAR)) != 0)
 			 ? (thisdom && thisdow)
 			 : (thisdom || thisdow)))
 	{
@@ -1508,7 +1530,7 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 			task->lastStartTime = GetCurrentTimestamp();
 
 			if (CronLogRun)
-				UpdateJobRunDetail(task->runId, &pid, GetCronStatus(CRON_STATUS_RUNNING), NULL, &task->lastStartTime, NULL);
+				UpdateJobRunDetail(task->runId, (int32 *) &pid, GetCronStatus(CRON_STATUS_RUNNING), NULL, &task->lastStartTime, NULL);
 
 			task->state = CRON_TASK_BGW_RUNNING;
 			break;
@@ -1556,7 +1578,7 @@ ManageCronTask(CronTask *task, TimestampTz currentTime)
 
 				pid = (pid_t) PQbackendPID(connection);
 				if (CronLogRun)
-					UpdateJobRunDetail(task->runId, &pid, GetCronStatus(CRON_STATUS_SENDING), NULL, NULL, NULL);
+					UpdateJobRunDetail(task->runId, (int32 *) &pid, GetCronStatus(CRON_STATUS_SENDING), NULL, NULL, NULL);
 			}
 			else if (pollingStatus == PGRES_POLLING_FAILED)
 			{
