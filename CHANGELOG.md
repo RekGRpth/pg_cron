@@ -1,4 +1,4 @@
-### pg_cron v1.6.8 (September 3, 2026) ###
+### pg_cron v1.6.8 (September 8, 2026) ###
 
 * Add PostgreSQL 19 support by @CyberDem0n in https://github.com/citusdata/pg_cron/pull/430
 * Add native Windows build support by @codercms in https://github.com/citusdata/pg_cron/pull/431
